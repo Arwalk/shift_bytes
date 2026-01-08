@@ -1,0 +1,22 @@
+# shift_bytes
+
+A library for shifting bytes in a byte array using SIMD operations.
+
+## Usage
+
+```zig
+const shift_bytes = @import("shift_bytes");
+const shl_bytes = shift_bytes.shl_bytes;
+
+const bytes = [_]u8{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
+const buffer = [_]u8{0} ** (8);
+
+shl_bytes(bytes[0..], 1, buffer, 8);
+try std.testing.expectEqualSlices(u8, &[_]u8{0x02, 0x04, 0x06, 0x08, 0x0a, 0x0c, 0x0e, 0x10}, buffer);
+
+// keeps the shifted bytes across the array, only truncates at the boundaries.
+const bytes2 = [_]u8{ 0x80, 0x80, 0x00, 0x80, 0x00, 0x80, 0x00, 0x80};
+shl_bytes(bytes2[0..], 1, buffer, 8);
+try std.testing.expectEqualSlices(u8, &[_]u8{0x01, 0x00, 0x01, 0x00, 0x01, 0x00, 0x01, 0x00}, buffer);
+```
+
