@@ -3,21 +3,22 @@ pub fn shlBytesAlloc(bytes: []const u8, bitShift: usize, comptime size: usize, a
     for (buffer) |*b| {
         b.* = 0;
     }
-    shlBytes(bytes, bitShift, buffer, size);
+    _ = shlBytes(bytes, bitShift, buffer, size);
     return buffer;
 }
 
-pub fn shlBytesInplace(bytes: []u8, bitShift: usize, comptime size: usize) void {
-    shlBytes(bytes, bitShift, bytes, size);
+pub fn shlBytesInplace(bytes: []u8, bitShift: usize, comptime size: usize) u8 {
+    const obtained = shlBytes(bytes, bitShift, bytes, size);
     if (bitShift >= 8) {
         const bytesToClear = bitShift / 8;
         for (0..bytesToClear) |i| {
             bytes[bytes.len - i - 1] = 0;
         }
     }
+    return obtained;
 }
 
-pub fn shlBytes(bytes: []const u8, bitShift: usize, out: []u8, comptime size: usize) void {
+pub fn shlBytes(bytes: []const u8, bitShift: usize, out: []u8, comptime size: usize) u8 {
     const V = @Vector(size, u8);
     const VShift = @Vector(size, u3);
     switch (bitShift) {
@@ -25,6 +26,7 @@ pub fn shlBytes(bytes: []const u8, bitShift: usize, out: []u8, comptime size: us
             for (bytes, 0..bytes.len) |b, i| {
                 out[i] = b;
             }
+            return 0;
         },
         1...7 => {
             var tempArr = [_]u8{0} ** (size);
@@ -38,7 +40,8 @@ pub fn shlBytes(bytes: []const u8, bitShift: usize, out: []u8, comptime size: us
             const truncatedBitShift = @as(u3, @truncate(bitShift));
             const shifteV: VShift = [_]u3{truncatedBitShift} ** size;
 
-            const shiftRemainderVector: VShift = [_]u3{7 - truncatedBitShift + 1} ** size;
+            const reverseShift: u3 = 7 - truncatedBitShift + 1;
+            const shiftRemainderVector: VShift = [_]u3{reverseShift} ** size;
             const shiftRemainder = remainderVector >> shiftRemainderVector;
 
             var r = temp << shifteV;
@@ -46,10 +49,11 @@ pub fn shlBytes(bytes: []const u8, bitShift: usize, out: []u8, comptime size: us
 
             const rt: [size]u8 = r;
             @memcpy(out, rt[0..size]);
+            return tempArr[0] >> reverseShift;
         },
         else => {
             const bytesToSkip = bitShift / 8;
-            @call(.always_tail, shlBytes, .{ bytes[bytesToSkip..], bitShift % 8, out, size });
+            return @call(.always_tail, shlBytes, .{ bytes[bytesToSkip..], bitShift % 8, out, size });
         },
     }
 }
@@ -61,18 +65,19 @@ const ShlTestInput = struct {
     bytes: []const u8,
     bitShift: usize,
     expected: []const u8,
+    expectedRemainder: u8,
 };
 
 const shl_test_inputs = [_]ShlTestInput{
-    .{ .size = 8, .bytes = &[_]u8{ 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08 }, .bitShift = 0, .expected = &[_]u8{ 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08 } },
-    .{ .size = 8, .bytes = &[_]u8{ 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08 }, .bitShift = 1, .expected = &[_]u8{ 0x02, 0x04, 0x06, 0x08, 0x0a, 0x0c, 0x0e, 0x10 } },
-    .{ .size = 8, .bytes = &[_]u8{ 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08 }, .bitShift = 2, .expected = &[_]u8{ 0x04, 0x08, 0x0c, 0x10, 0x14, 0x18, 0x1c, 0x20 } },
-    .{ .size = 8, .bytes = &[_]u8{ 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08 }, .bitShift = 3, .expected = &[_]u8{ 0x08, 0x10, 0x18, 0x20, 0x28, 0x30, 0x38, 0x40 } },
-    .{ .size = 8, .bytes = &[_]u8{ 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08 }, .bitShift = 4, .expected = &[_]u8{ 0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x80 } },
-    .{ .size = 8, .bytes = &[_]u8{ 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08 }, .bitShift = 8, .expected = &[_]u8{ 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x00 } },
-    .{ .size = 8, .bytes = &[_]u8{ 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08 }, .bitShift = 9, .expected = &[_]u8{ 0x04, 0x06, 0x08, 0x0a, 0x0c, 0x0e, 0x10, 0x00 } },
-    .{ .size = 8, .bytes = &[_]u8{ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 }, .bitShift = 1, .expected = &[_]u8{ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 } },
-    .{ .size = 8, .bytes = &[_]u8{ 0x80, 0x80, 0x00, 0x80, 0x00, 0x80, 0x00, 0x80 }, .bitShift = 1, .expected = &[_]u8{ 0x01, 0x00, 0x01, 0x00, 0x01, 0x00, 0x01, 0x00 } },
+    .{ .size = 8, .bytes = &[_]u8{ 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08 }, .bitShift = 0, .expected = &[_]u8{ 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08 }, .expectedRemainder = 0x00 },
+    .{ .size = 8, .bytes = &[_]u8{ 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08 }, .bitShift = 1, .expected = &[_]u8{ 0x02, 0x04, 0x06, 0x08, 0x0a, 0x0c, 0x0e, 0x10 }, .expectedRemainder = 0x00 },
+    .{ .size = 8, .bytes = &[_]u8{ 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08 }, .bitShift = 2, .expected = &[_]u8{ 0x04, 0x08, 0x0c, 0x10, 0x14, 0x18, 0x1c, 0x20 }, .expectedRemainder = 0x00 },
+    .{ .size = 8, .bytes = &[_]u8{ 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08 }, .bitShift = 3, .expected = &[_]u8{ 0x08, 0x10, 0x18, 0x20, 0x28, 0x30, 0x38, 0x40 }, .expectedRemainder = 0x00 },
+    .{ .size = 8, .bytes = &[_]u8{ 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08 }, .bitShift = 4, .expected = &[_]u8{ 0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x80 }, .expectedRemainder = 0x00 },
+    .{ .size = 8, .bytes = &[_]u8{ 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08 }, .bitShift = 8, .expected = &[_]u8{ 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x00 }, .expectedRemainder = 0x00 },
+    .{ .size = 8, .bytes = &[_]u8{ 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08 }, .bitShift = 9, .expected = &[_]u8{ 0x04, 0x06, 0x08, 0x0a, 0x0c, 0x0e, 0x10, 0x00 }, .expectedRemainder = 0x00 },
+    .{ .size = 8, .bytes = &[_]u8{ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 }, .bitShift = 1, .expected = &[_]u8{ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 }, .expectedRemainder = 0x00 },
+    .{ .size = 8, .bytes = &[_]u8{ 0x80, 0x80, 0x00, 0x80, 0x00, 0x80, 0x00, 0x80 }, .bitShift = 1, .expected = &[_]u8{ 0x01, 0x00, 0x01, 0x00, 0x01, 0x00, 0x01, 0x00 }, .expectedRemainder = 0x01 },
 };
 
 fn test_shl_bytes_alloc(input: ShlTestInput) !void {
@@ -84,7 +89,7 @@ fn test_shl_bytes_alloc(input: ShlTestInput) !void {
 fn test_shl_bytes_inplace(input: ShlTestInput) !void {
     var buffer = [_]u8{0} ** input.size;
     @memcpy(buffer[0..input.size], input.bytes);
-    shlBytesInplace(buffer[0..], input.bitShift, input.size);
+    _ = shlBytesInplace(buffer[0..], input.bitShift, input.size);
     try std.testing.expectEqualSlices(u8, input.expected, &buffer);
 }
 
@@ -94,7 +99,7 @@ fn test_shl_bytes(input: ShlTestInput) !void {
         b.* = 0;
     }
     defer std.testing.allocator.free(buffer);
-    shlBytes(input.bytes[0..], input.bitShift, buffer, input.size);
+    _ = shlBytes(input.bytes[0..], input.bitShift, buffer, input.size);
     try std.testing.expectEqualSlices(u8, input.expected, buffer);
 }
 
@@ -150,6 +155,7 @@ test "fuzz shl" {
                 .bytes = &inputBytes,
                 .bitShift = inputBitShift,
                 .expected = &expectedBytes,
+                .expectedRemainder = expectedBytes[0] >> (7 - @as(u3, @truncate(inputBitShift)) + 1),
             };
             try test_shl_bytes_alloc(input);
             try test_shl_bytes(input);
