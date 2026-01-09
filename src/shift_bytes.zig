@@ -1,24 +1,4 @@
-pub fn shlBytesAlloc(bytes: []const u8, bitShift: usize, comptime size: usize, allocator: std.mem.Allocator) ![]u8 {
-    const buffer = try allocator.alloc(u8, size);
-    for (buffer) |*b| {
-        b.* = 0;
-    }
-    _ = shlBytes(bytes, bitShift, buffer, size);
-    return buffer;
-}
-
-pub fn shlBytesInplace(bytes: []u8, bitShift: usize, comptime size: usize) u8 {
-    const obtained = shlBytes(bytes, bitShift, bytes, size);
-    if (bitShift >= 8) {
-        const bytesToClear = bitShift / 8;
-        for (0..bytesToClear) |i| {
-            bytes[bytes.len - i - 1] = 0;
-        }
-    }
-    return obtained;
-}
-
-pub fn shlBytes(bytes: []const u8, bitShift: usize, out: []u8, comptime size: usize) u8 {
+pub fn shlBytesFixed(bytes: []const u8, bitShift: usize, out: []u8, comptime size: usize) u8 {
     const V = @Vector(size, u8);
     const VShift = @Vector(size, u3);
     switch (bitShift) {
@@ -53,9 +33,29 @@ pub fn shlBytes(bytes: []const u8, bitShift: usize, out: []u8, comptime size: us
         },
         else => {
             const bytesToSkip = bitShift / 8;
-            return @call(.always_tail, shlBytes, .{ bytes[bytesToSkip..], bitShift % 8, out, size });
+            return @call(.always_tail, shlBytesFixed, .{ bytes[bytesToSkip..], bitShift % 8, out, size });
         },
     }
+}
+
+pub fn shlBytesAllocFixed(bytes: []const u8, bitShift: usize, comptime size: usize, allocator: std.mem.Allocator) ![]u8 {
+    const buffer = try allocator.alloc(u8, size);
+    for (buffer) |*b| {
+        b.* = 0;
+    }
+    _ = shlBytesFixed(bytes, bitShift, buffer, size);
+    return buffer;
+}
+
+pub fn shlBytesInplaceFixed(bytes: []u8, bitShift: usize, comptime size: usize) u8 {
+    const obtained = shlBytesFixed(bytes, bitShift, bytes, size);
+    if (bitShift >= 8) {
+        const bytesToClear = bitShift / 8;
+        for (0..bytesToClear) |i| {
+            bytes[bytes.len - i - 1] = 0;
+        }
+    }
+    return obtained;
 }
 
 const std = @import("std");
@@ -81,7 +81,7 @@ const shl_test_inputs = [_]ShlTestInput{
 };
 
 fn test_shl_bytes_alloc(input: ShlTestInput) !void {
-    const buffer = try shlBytesAlloc(input.bytes[0..], input.bitShift, input.size, std.testing.allocator);
+    const buffer = try shlBytesAllocFixed(input.bytes[0..], input.bitShift, input.size, std.testing.allocator);
     defer std.testing.allocator.free(buffer);
     try std.testing.expectEqualSlices(u8, input.expected, buffer);
 }
@@ -89,7 +89,7 @@ fn test_shl_bytes_alloc(input: ShlTestInput) !void {
 fn test_shl_bytes_inplace(input: ShlTestInput) !void {
     var buffer = [_]u8{0} ** input.size;
     @memcpy(buffer[0..input.size], input.bytes);
-    _ = shlBytesInplace(buffer[0..], input.bitShift, input.size);
+    _ = shlBytesInplaceFixed(buffer[0..], input.bitShift, input.size);
     try std.testing.expectEqualSlices(u8, input.expected, &buffer);
 }
 
@@ -99,7 +99,7 @@ fn test_shl_bytes(input: ShlTestInput) !void {
         b.* = 0;
     }
     defer std.testing.allocator.free(buffer);
-    _ = shlBytes(input.bytes[0..], input.bitShift, buffer, input.size);
+    _ = shlBytesFixed(input.bytes[0..], input.bitShift, buffer, input.size);
     try std.testing.expectEqualSlices(u8, input.expected, buffer);
 }
 
