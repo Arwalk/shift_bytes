@@ -1,6 +1,22 @@
+fn ShiftVectors(comptime size: usize) type {
+    return struct {
+        const VectorType = @Vector(size, u3);
+
+        shift: VectorType,
+        reverseShift: VectorType,
+    };
+}
+
+fn buildShlVectors(comptime size: usize, bitShift: usize) ShiftVectors(size) {
+    const truncatedBitShift = @as(u3, @truncate(bitShift));
+    const reverseShift: u3 = 7 - truncatedBitShift + 1;
+    return .{
+        .shift = [_]u3{truncatedBitShift} ** size,
+        .reverseShift = [_]u3{reverseShift} ** size,
+    };
+}
+
 pub fn shlBytesFixed(bytes: []const u8, bitShift: usize, out: []u8, comptime size: usize) u8 {
-    const V = @Vector(size, u8);
-    const VShift = @Vector(size, u3);
     switch (bitShift) {
         0 => {
             for (bytes, 0..bytes.len) |b, i| {
@@ -14,22 +30,19 @@ pub fn shlBytesFixed(bytes: []const u8, bitShift: usize, out: []u8, comptime siz
             @memcpy(tempArr[0..bytes.len], bytes);
             @memcpy(remainders[0 .. bytes.len - 1], bytes[1..]);
 
-            const temp: V = tempArr;
-            const remainderVector: V = remainders;
+            const shifters: ShiftVectors(size) = buildShlVectors(size, bitShift);
 
-            const truncatedBitShift = @as(u3, @truncate(bitShift));
-            const shifteV: VShift = [_]u3{truncatedBitShift} ** size;
+            const temp: @Vector(size, u8) = tempArr;
+            const remainderVector: @Vector(size, u8) = remainders;
 
-            const reverseShift: u3 = 7 - truncatedBitShift + 1;
-            const shiftRemainderVector: VShift = [_]u3{reverseShift} ** size;
-            const shiftRemainder = remainderVector >> shiftRemainderVector;
+            const shiftRemainder = remainderVector >> shifters.reverseShift;
 
-            var r = temp << shifteV;
+            var r = temp << shifters.shift;
             r = r + shiftRemainder;
 
             const rt: [size]u8 = r;
             @memcpy(out, rt[0..size]);
-            return tempArr[0] >> reverseShift;
+            return tempArr[0] >> shifters.reverseShift[0];
         },
         else => {
             const bytesToSkip = bitShift / 8;
