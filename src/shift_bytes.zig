@@ -19,7 +19,24 @@ fn buildShlVectors(comptime size: usize, bitShift: usize) ShiftVectors(size) {
     };
 }
 
-//fn shlBytesFixedImpl(bytes: []const u8, bitShift: usize, out: []u8, comptime size: usize) u8 {}
+fn shlBytesFixedImpl(bytes: []const u8, out: []u8, comptime size: usize, shifters: ShiftVectors(size)) void {
+    assert(size >= bytes.len);
+    var tempArr = [_]u8{0} ** (size);
+    var remainders = [_]u8{0} ** (size);
+    @memcpy(tempArr[0..bytes.len], bytes);
+    @memcpy(remainders[0 .. bytes.len - 1], bytes[1..]);
+
+    const temp: @Vector(size, u8) = tempArr;
+    const remainderVector: @Vector(size, u8) = remainders;
+
+    const shiftRemainder = remainderVector >> shifters.reverseShift;
+
+    var r = temp << shifters.shift;
+    r = r + shiftRemainder;
+
+    const rt: [size]u8 = r;
+    @memcpy(out, rt[0..size]);
+}
 
 pub fn shlBytesFixed(bytes: []const u8, bitShift: usize, out: []u8, comptime size: usize) void {
     switch (bitShift) {
@@ -31,23 +48,8 @@ pub fn shlBytesFixed(bytes: []const u8, bitShift: usize, out: []u8, comptime siz
         },
         1...7 => {
             assert(size >= bytes.len);
-            var tempArr = [_]u8{0} ** (size);
-            var remainders = [_]u8{0} ** (size);
-            @memcpy(tempArr[0..bytes.len], bytes);
-            @memcpy(remainders[0 .. bytes.len - 1], bytes[1..]);
-
             const shifters: ShiftVectors(size) = buildShlVectors(size, bitShift);
-
-            const temp: @Vector(size, u8) = tempArr;
-            const remainderVector: @Vector(size, u8) = remainders;
-
-            const shiftRemainder = remainderVector >> shifters.reverseShift;
-
-            var r = temp << shifters.shift;
-            r = r + shiftRemainder;
-
-            const rt: [size]u8 = r;
-            @memcpy(out, rt[0..size]);
+            shlBytesFixedImpl(bytes, out, size, shifters);
         },
         else => {
             const bytesToSkip = bitShift / 8;
