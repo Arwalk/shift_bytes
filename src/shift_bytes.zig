@@ -1,3 +1,6 @@
+const std = @import("std");
+const assert = std.debug.assert;
+
 fn ShiftVectors(comptime size: usize) type {
     return struct {
         const VectorType = @Vector(size, u3);
@@ -16,15 +19,18 @@ fn buildShlVectors(comptime size: usize, bitShift: usize) ShiftVectors(size) {
     };
 }
 
-pub fn shlBytesFixed(bytes: []const u8, bitShift: usize, out: []u8, comptime size: usize) u8 {
+//fn shlBytesFixedImpl(bytes: []const u8, bitShift: usize, out: []u8, comptime size: usize) u8 {}
+
+pub fn shlBytesFixed(bytes: []const u8, bitShift: usize, out: []u8, comptime size: usize) void {
     switch (bitShift) {
         0 => {
             for (bytes, 0..bytes.len) |b, i| {
                 out[i] = b;
             }
-            return 0;
+            return;
         },
         1...7 => {
+            assert(size >= bytes.len);
             var tempArr = [_]u8{0} ** (size);
             var remainders = [_]u8{0} ** (size);
             @memcpy(tempArr[0..bytes.len], bytes);
@@ -42,7 +48,6 @@ pub fn shlBytesFixed(bytes: []const u8, bitShift: usize, out: []u8, comptime siz
 
             const rt: [size]u8 = r;
             @memcpy(out, rt[0..size]);
-            return tempArr[0] >> shifters.reverseShift[0];
         },
         else => {
             const bytesToSkip = bitShift / 8;
@@ -56,22 +61,19 @@ pub fn shlBytesAllocFixed(bytes: []const u8, bitShift: usize, comptime size: usi
     for (buffer) |*b| {
         b.* = 0;
     }
-    _ = shlBytesFixed(bytes, bitShift, buffer, size);
+    shlBytesFixed(bytes, bitShift, buffer, size);
     return buffer;
 }
 
-pub fn shlBytesInplaceFixed(bytes: []u8, bitShift: usize, comptime size: usize) u8 {
-    const obtained = shlBytesFixed(bytes, bitShift, bytes, size);
+pub fn shlBytesInplaceFixed(bytes: []u8, bitShift: usize, comptime size: usize) void {
+    shlBytesFixed(bytes, bitShift, bytes, size);
     if (bitShift >= 8) {
         const bytesToClear = bitShift / 8;
         for (0..bytesToClear) |i| {
             bytes[bytes.len - i - 1] = 0;
         }
     }
-    return obtained;
 }
-
-const std = @import("std");
 
 const ShlTestInput = struct {
     comptime size: usize = 8,
