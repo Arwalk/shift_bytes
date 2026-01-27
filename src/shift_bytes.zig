@@ -90,7 +90,7 @@ fn shlBytesFixedImpl(bytes: []const u8, out: []u8, comptime size: usize, shifter
     r = r + shiftRemainder;
 
     const rt: [size]u8 = r;
-    @memcpy(out, rt[0..size]);
+    @memcpy(out, rt[0..out.len]);
 }
 
 pub fn shlBytesFixed(bytes: []const u8, bitShift: usize, out: []u8, comptime size: usize) void {
@@ -150,19 +150,20 @@ const shl_test_inputs = [_]ShlTestInput{
     .{ .size = 8, .bytes = &[_]u8{ 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08 }, .bitShift = 9, .expected = &[_]u8{ 0x04, 0x06, 0x08, 0x0a, 0x0c, 0x0e, 0x10, 0x00 }, .expectedRemainder = 0x00 },
     .{ .size = 8, .bytes = &[_]u8{ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 }, .bitShift = 1, .expected = &[_]u8{ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 }, .expectedRemainder = 0x00 },
     .{ .size = 8, .bytes = &[_]u8{ 0x80, 0x80, 0x00, 0x80, 0x00, 0x80, 0x00, 0x80 }, .bitShift = 1, .expected = &[_]u8{ 0x01, 0x00, 0x01, 0x00, 0x01, 0x00, 0x01, 0x00 }, .expectedRemainder = 0x01 },
+    .{ .size = 8, .bytes = &[_]u8{ 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07 }, .bitShift = 2, .expected = &[_]u8{ 0x04, 0x08, 0x0c, 0x10, 0x14, 0x18, 0x1c }, .expectedRemainder = 0x00 },
 };
 
 fn test_shl_bytes_alloc(input: ShlTestInput) !void {
     const buffer = try shlBytesAllocFixed(input.bytes[0..], input.bitShift, input.size, std.testing.allocator);
     defer std.testing.allocator.free(buffer);
-    try std.testing.expectEqualSlices(u8, input.expected, buffer);
+    try std.testing.expectEqualSlices(u8, input.expected, buffer[0..input.bytes.len]);
 }
 
 fn test_shl_bytes_inplace(input: ShlTestInput) !void {
     var buffer = [_]u8{0} ** input.size;
-    @memcpy(buffer[0..input.size], input.bytes);
-    _ = shlBytesInplaceFixed(buffer[0..], input.bitShift, input.size);
-    try std.testing.expectEqualSlices(u8, input.expected, &buffer);
+    @memcpy(buffer[0..input.bytes.len], input.bytes);
+    _ = shlBytesInplaceFixed(buffer[0..input.bytes.len], input.bitShift, input.size);
+    try std.testing.expectEqualSlices(u8, input.expected, buffer[0..input.bytes.len]);
 }
 
 fn test_shl_bytes(input: ShlTestInput) !void {
@@ -172,7 +173,7 @@ fn test_shl_bytes(input: ShlTestInput) !void {
     }
     defer std.testing.allocator.free(buffer);
     _ = shlBytesFixed(input.bytes[0..], input.bitShift, buffer, input.size);
-    try std.testing.expectEqualSlices(u8, input.expected, buffer);
+    try std.testing.expectEqualSlices(u8, input.expected, buffer[0..input.bytes.len]);
 }
 
 fn test_shl_chunked(input: ShlTestInput, comptime chunkSize: usize) !void {
