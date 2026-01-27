@@ -19,6 +19,61 @@ fn buildShlVectors(comptime size: usize, bitShift: usize) ShiftVectors(size) {
     };
 }
 
+fn shlBytes(bytes: []const u8, bitShift: usize, out: []u8, comptime chunkSize: usize) !void {
+    comptime {
+        if (chunkSize <= 1) {
+            @compileError("shlBytes can not shift chunks of size 1 or 0.");
+        }
+    }
+    switch (bitShift) {
+        0 => {
+            for (bytes, 0..bytes.len) |b, i| {
+                out[i] = b;
+            }
+            return;
+        },
+        1...7 => {
+            var writer = std.Io.Writer.fixed(out);
+            var reader = std.Io.Reader.fixed(bytes);
+            const shifters = buildShlVectors(chunkSize, bitShift);
+
+            var shouldContinue = true;
+
+            while (shouldContinue) {
+                var chunks = [_]u8{0} ** (chunkSize * chunkSize);
+                var boundaries = [_]u8{0} ** chunkSize;
+                const read = try reader.readSliceShort(&chunks);
+                inline for (0..chunkSize) |i| {
+                    boundaries[i] = chunks[(i * chunkSize) + 1];
+                }
+                boundaries[chunkSize - 1] = if (reader.peekByte()) |b| blk: {
+                    break :blk b;
+                } else |err| blk: {
+                    switch (err) {
+                        error.EndOfStream => shouldContinue = false,
+                        else => return err,
+                    }
+                    break :blk 0;
+                };
+                inline for (0..chunkSize) |i| {
+                    const lowerBound = i * chunkSize;
+                    shlBytesFixedImpl(chunks[lowerBound .. lowerBound + chunkSize], chunks[lowerBound .. lowerBound + chunkSize], chunkSize, shifters);
+                }
+                boundaries = @as(@Vector(chunkSize, u8), boundaries) >> shifters.reverseShift;
+                inline for (1..chunkSize - 1) |i| {
+                    chunks[i * chunkSize] = boundaries[i];
+                }
+                _ = try writer.write(chunks[0..read]);
+            }
+            try writer.flush();
+        },
+        else => {
+            const bytesToSkip = bitShift / 8;
+            return @call(.always_tail, shlBytes, .{ bytes[bytesToSkip..], bitShift % 8, out, chunkSize });
+        },
+    }
+}
+
 fn shlBytesFixedImpl(bytes: []const u8, out: []u8, comptime size: usize, shifters: ShiftVectors(size)) void {
     assert(size >= bytes.len);
     var tempArr = [_]u8{0} ** (size);
@@ -120,6 +175,15 @@ fn test_shl_bytes(input: ShlTestInput) !void {
     try std.testing.expectEqualSlices(u8, input.expected, buffer);
 }
 
+fn test_shl_chunked(input: ShlTestInput, comptime chunkSize: usize) !void {
+    const buffer = try std.testing.allocator.alloc(u8, input.size);
+    for (buffer) |*b| {
+        b.* = 0;
+    }
+    defer std.testing.allocator.free(buffer);
+    _ = try shlBytes(input.bytes[0..], input.bitShift, buffer, chunkSize);
+}
+
 test "shl_bytes" {
     inline for (shl_test_inputs) |input| {
         _ = struct {
@@ -137,6 +201,13 @@ test "shl_bytes" {
                 try test_shl_bytes_inplace(input);
             }
         };
+        inline for (2..8) |i| {
+            _ = struct {
+                test {
+                    try test_shl_chunked(input, i);
+                }
+            };
+        }
     }
 }
 
