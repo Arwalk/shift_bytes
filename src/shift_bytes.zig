@@ -19,7 +19,7 @@ fn buildShlVectors(comptime size: usize, bitShift: usize) ShiftVectors(size) {
     };
 }
 
-fn shlBytes(bytes: []const u8, bitShift: usize, out: []u8, comptime chunkSize: usize) !void {
+pub fn shlBytes(bytes: []const u8, bitShift: usize, out: []u8, comptime chunkSize: usize) !void {
     comptime {
         if (chunkSize <= 1) {
             @compileError("shlBytes can not shift chunks of size 1 or 0.");
