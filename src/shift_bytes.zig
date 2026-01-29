@@ -43,8 +43,8 @@ pub fn shlBytes(bytes: []const u8, bitShift: usize, out: []u8, comptime chunkSiz
                 var chunks = [_]u8{0} ** (chunkSize * chunkSize);
                 var boundaries = [_]u8{0} ** chunkSize;
                 const read = try reader.readSliceShort(&chunks);
-                inline for (0..chunkSize) |i| {
-                    boundaries[i] = chunks[(i * chunkSize) + 1];
+                inline for (0..chunkSize - 1) |i| {
+                    boundaries[i] = chunks[(i * chunkSize) + chunkSize];
                 }
                 boundaries[chunkSize - 1] = if (reader.peekByte()) |b| blk: {
                     break :blk b;
@@ -57,11 +57,14 @@ pub fn shlBytes(bytes: []const u8, bitShift: usize, out: []u8, comptime chunkSiz
                 };
                 inline for (0..chunkSize) |i| {
                     const lowerBound = i * chunkSize;
-                    shlBytesFixedImpl(chunks[lowerBound .. lowerBound + chunkSize], chunks[lowerBound .. lowerBound + chunkSize], chunkSize, shifters);
+                    const upperBound = lowerBound + chunkSize;
+                    shlBytesFixedImpl(chunks[lowerBound..upperBound], chunks[lowerBound..upperBound], chunkSize, shifters);
                 }
-                boundaries = @as(@Vector(chunkSize, u8), boundaries) >> shifters.reverseShift;
-                inline for (1..chunkSize - 1) |i| {
-                    chunks[i * chunkSize] = boundaries[i];
+                const remainderVector: @Vector(chunkSize, u8) = boundaries;
+                const remainders = remainderVector >> shifters.reverseShift;
+
+                inline for (0..chunkSize - 1) |i| {
+                    chunks[(i * chunkSize) + (chunkSize - 1)] += remainders[i];
                 }
                 _ = try writer.write(chunks[0..read]);
             }
@@ -183,6 +186,7 @@ fn test_shl_chunked(input: ShlTestInput, comptime chunkSize: usize) !void {
     }
     defer std.testing.allocator.free(buffer);
     _ = try shlBytes(input.bytes[0..], input.bitShift, buffer, chunkSize);
+    try std.testing.expectEqualSlices(u8, input.expected, buffer[0..input.bytes.len]);
 }
 
 test "shl_bytes" {
@@ -202,14 +206,224 @@ test "shl_bytes" {
                 try test_shl_bytes_inplace(input);
             }
         };
-        inline for (2..8) |i| {
-            _ = struct {
-                test {
-                    try test_shl_chunked(input, i);
-                }
-            };
-        }
     }
+}
+
+test "shl_chunked input 0 chunk 2" {
+    try test_shl_chunked(shl_test_inputs[0], 2);
+}
+test "shl_chunked input 0 chunk 3" {
+    try test_shl_chunked(shl_test_inputs[0], 3);
+}
+test "shl_chunked input 0 chunk 4" {
+    try test_shl_chunked(shl_test_inputs[0], 4);
+}
+test "shl_chunked input 0 chunk 5" {
+    try test_shl_chunked(shl_test_inputs[0], 5);
+}
+test "shl_chunked input 0 chunk 6" {
+    try test_shl_chunked(shl_test_inputs[0], 6);
+}
+test "shl_chunked input 0 chunk 7" {
+    try test_shl_chunked(shl_test_inputs[0], 7);
+}
+test "shl_chunked input 0 chunk 8" {
+    try test_shl_chunked(shl_test_inputs[0], 8);
+}
+test "shl_chunked input 1 chunk 2" {
+    try test_shl_chunked(shl_test_inputs[1], 2);
+}
+test "shl_chunked input 1 chunk 3" {
+    try test_shl_chunked(shl_test_inputs[1], 3);
+}
+test "shl_chunked input 1 chunk 4" {
+    try test_shl_chunked(shl_test_inputs[1], 4);
+}
+test "shl_chunked input 1 chunk 5" {
+    try test_shl_chunked(shl_test_inputs[1], 5);
+}
+test "shl_chunked input 1 chunk 6" {
+    try test_shl_chunked(shl_test_inputs[1], 6);
+}
+test "shl_chunked input 1 chunk 7" {
+    try test_shl_chunked(shl_test_inputs[1], 7);
+}
+test "shl_chunked input 1 chunk 8" {
+    try test_shl_chunked(shl_test_inputs[1], 8);
+}
+test "shl_chunked input 2 chunk 2" {
+    try test_shl_chunked(shl_test_inputs[2], 2);
+}
+test "shl_chunked input 2 chunk 3" {
+    try test_shl_chunked(shl_test_inputs[2], 3);
+}
+test "shl_chunked input 2 chunk 4" {
+    try test_shl_chunked(shl_test_inputs[2], 4);
+}
+test "shl_chunked input 2 chunk 5" {
+    try test_shl_chunked(shl_test_inputs[2], 5);
+}
+test "shl_chunked input 2 chunk 6" {
+    try test_shl_chunked(shl_test_inputs[2], 6);
+}
+test "shl_chunked input 2 chunk 7" {
+    try test_shl_chunked(shl_test_inputs[2], 7);
+}
+test "shl_chunked input 2 chunk 8" {
+    try test_shl_chunked(shl_test_inputs[2], 8);
+}
+test "shl_chunked input 3 chunk 2" {
+    try test_shl_chunked(shl_test_inputs[3], 2);
+}
+test "shl_chunked input 3 chunk 3" {
+    try test_shl_chunked(shl_test_inputs[3], 3);
+}
+test "shl_chunked input 3 chunk 4" {
+    try test_shl_chunked(shl_test_inputs[3], 4);
+}
+test "shl_chunked input 3 chunk 5" {
+    try test_shl_chunked(shl_test_inputs[3], 5);
+}
+test "shl_chunked input 3 chunk 6" {
+    try test_shl_chunked(shl_test_inputs[3], 6);
+}
+test "shl_chunked input 3 chunk 7" {
+    try test_shl_chunked(shl_test_inputs[3], 7);
+}
+test "shl_chunked input 3 chunk 8" {
+    try test_shl_chunked(shl_test_inputs[3], 8);
+}
+test "shl_chunked input 4 chunk 2" {
+    try test_shl_chunked(shl_test_inputs[4], 2);
+}
+test "shl_chunked input 4 chunk 3" {
+    try test_shl_chunked(shl_test_inputs[4], 3);
+}
+test "shl_chunked input 4 chunk 4" {
+    try test_shl_chunked(shl_test_inputs[4], 4);
+}
+test "shl_chunked input 4 chunk 5" {
+    try test_shl_chunked(shl_test_inputs[4], 5);
+}
+test "shl_chunked input 4 chunk 6" {
+    try test_shl_chunked(shl_test_inputs[4], 6);
+}
+test "shl_chunked input 4 chunk 7" {
+    try test_shl_chunked(shl_test_inputs[4], 7);
+}
+test "shl_chunked input 4 chunk 8" {
+    try test_shl_chunked(shl_test_inputs[4], 8);
+}
+test "shl_chunked input 5 chunk 2" {
+    try test_shl_chunked(shl_test_inputs[5], 2);
+}
+test "shl_chunked input 5 chunk 3" {
+    try test_shl_chunked(shl_test_inputs[5], 3);
+}
+test "shl_chunked input 5 chunk 4" {
+    try test_shl_chunked(shl_test_inputs[5], 4);
+}
+test "shl_chunked input 5 chunk 5" {
+    try test_shl_chunked(shl_test_inputs[5], 5);
+}
+test "shl_chunked input 5 chunk 6" {
+    try test_shl_chunked(shl_test_inputs[5], 6);
+}
+test "shl_chunked input 5 chunk 7" {
+    try test_shl_chunked(shl_test_inputs[5], 7);
+}
+test "shl_chunked input 5 chunk 8" {
+    try test_shl_chunked(shl_test_inputs[5], 8);
+}
+test "shl_chunked input 6 chunk 2" {
+    try test_shl_chunked(shl_test_inputs[6], 2);
+}
+test "shl_chunked input 6 chunk 3" {
+    try test_shl_chunked(shl_test_inputs[6], 3);
+}
+test "shl_chunked input 6 chunk 4" {
+    try test_shl_chunked(shl_test_inputs[6], 4);
+}
+test "shl_chunked input 6 chunk 5" {
+    try test_shl_chunked(shl_test_inputs[6], 5);
+}
+test "shl_chunked input 6 chunk 6" {
+    try test_shl_chunked(shl_test_inputs[6], 6);
+}
+test "shl_chunked input 6 chunk 7" {
+    try test_shl_chunked(shl_test_inputs[6], 7);
+}
+test "shl_chunked input 6 chunk 8" {
+    try test_shl_chunked(shl_test_inputs[6], 8);
+}
+test "shl_chunked input 7 chunk 2" {
+    try test_shl_chunked(shl_test_inputs[7], 2);
+}
+test "shl_chunked input 7 chunk 3" {
+    try test_shl_chunked(shl_test_inputs[7], 3);
+}
+test "shl_chunked input 7 chunk 4" {
+    try test_shl_chunked(shl_test_inputs[7], 4);
+}
+test "shl_chunked input 7 chunk 5" {
+    try test_shl_chunked(shl_test_inputs[7], 5);
+}
+test "shl_chunked input 7 chunk 6" {
+    try test_shl_chunked(shl_test_inputs[7], 6);
+}
+test "shl_chunked input 7 chunk 7" {
+    try test_shl_chunked(shl_test_inputs[7], 7);
+}
+test "shl_chunked input 7 chunk 8" {
+    try test_shl_chunked(shl_test_inputs[7], 8);
+}
+test "shl_chunked input 8 chunk 2" {
+    try test_shl_chunked(shl_test_inputs[8], 2);
+}
+test "shl_chunked input 8 chunk 3" {
+    try test_shl_chunked(shl_test_inputs[8], 3);
+}
+test "shl_chunked input 8 chunk 4" {
+    try test_shl_chunked(shl_test_inputs[8], 4);
+}
+test "shl_chunked input 8 chunk 5" {
+    try test_shl_chunked(shl_test_inputs[8], 5);
+}
+test "shl_chunked input 8 chunk 6" {
+    try test_shl_chunked(shl_test_inputs[8], 6);
+}
+test "shl_chunked input 8 chunk 7" {
+    try test_shl_chunked(shl_test_inputs[8], 7);
+}
+test "shl_chunked input 8 chunk 8" {
+    try test_shl_chunked(shl_test_inputs[8], 8);
+}
+test "shl_chunked input 9 chunk 2" {
+    try test_shl_chunked(shl_test_inputs[9], 2);
+}
+test "shl_chunked input 9 chunk 3" {
+    try test_shl_chunked(shl_test_inputs[9], 3);
+}
+test "shl_chunked input 9 chunk 4" {
+    try test_shl_chunked(shl_test_inputs[9], 4);
+}
+test "shl_chunked input 9 chunk 5" {
+    try test_shl_chunked(shl_test_inputs[9], 5);
+}
+test "shl_chunked input 9 chunk 6" {
+    try test_shl_chunked(shl_test_inputs[9], 6);
+}
+test "shl_chunked input 9 chunk 7" {
+    try test_shl_chunked(shl_test_inputs[9], 7);
+}
+test "shl_chunked input 9 chunk 8" {
+    try test_shl_chunked(shl_test_inputs[9], 8);
+}
+
+test "shl 2 bytes" {
+    var buffer = [_]u8{ 0x01, 0x02 };
+    shlBytesInplaceFixed(&buffer, 2, 2);
+    try std.testing.expectEqualSlices(u8, &[_]u8{ 0x04, 0x08 }, &buffer);
 }
 
 inline fn to_bytes(num: u64, out: []u8) void {
