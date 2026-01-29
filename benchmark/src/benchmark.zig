@@ -21,7 +21,10 @@ fn loadData(allocator: std.mem.Allocator) ![]u8 {
 }
 
 fn bench_shift(comptime chunkSize: usize) void {
-    shlBytes(data[0..], 17, empty, chunkSize) catch @panic("unable to shift");
+    var reader: std.Io.Reader = .fixed(data[0..]);
+    var useless = [_]u8{0};
+    var writer = std.Io.Writer.Discarding.init(&useless).writer;
+    shlBytes(&reader, 17, &writer, chunkSize) catch @panic("unable to shift");
 }
 
 fn bench_chunk_8(_: std.mem.Allocator) void {

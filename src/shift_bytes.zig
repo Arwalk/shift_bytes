@@ -19,7 +19,13 @@ fn buildShlVectors(comptime size: usize, bitShift: usize) ShiftVectors(size) {
     };
 }
 
-pub fn shlBytes(bytes: []const u8, bitShift: usize, out: []u8, comptime chunkSize: usize) !void {
+pub fn shlBytes(bytes: *std.Io.Reader, bitShift: usize, out: *std.Io.Writer, comptime chunkSize: usize) !void {
+    var skipped: usize = 0;
+    try shlBytesImpl(bytes, bitShift, out, chunkSize, &skipped);
+    _ = try out.splatByte(0, skipped);
+}
+
+fn shlBytesImpl(bytes: *std.Io.Reader, bitShift: usize, out: *std.Io.Writer, comptime chunkSize: usize, skipped: *usize) !void {
     comptime {
         if (chunkSize <= 1) {
             @compileError("shlBytes can not shift chunks of size 1 or 0.");
@@ -27,14 +33,10 @@ pub fn shlBytes(bytes: []const u8, bitShift: usize, out: []u8, comptime chunkSiz
     }
     switch (bitShift) {
         0 => {
-            for (bytes, 0..bytes.len) |b, i| {
-                out[i] = b;
-            }
+            _ = try bytes.streamRemaining(out);
             return;
         },
         1...7 => {
-            var writer = std.Io.Writer.fixed(out);
-            var reader = std.Io.Reader.fixed(bytes);
             const shifters = buildShlVectors(chunkSize, bitShift);
 
             var shouldContinue = true;
@@ -42,11 +44,11 @@ pub fn shlBytes(bytes: []const u8, bitShift: usize, out: []u8, comptime chunkSiz
             while (shouldContinue) {
                 var chunks = [_]u8{0} ** (chunkSize * chunkSize);
                 var boundaries = [_]u8{0} ** chunkSize;
-                const read = try reader.readSliceShort(&chunks);
+                const read = try bytes.readSliceShort(&chunks);
                 inline for (0..chunkSize - 1) |i| {
                     boundaries[i] = chunks[(i * chunkSize) + chunkSize];
                 }
-                boundaries[chunkSize - 1] = if (reader.peekByte()) |b| blk: {
+                boundaries[chunkSize - 1] = if (bytes.peekByte()) |b| blk: {
                     break :blk b;
                 } else |err| blk: {
                     switch (err) {
@@ -66,13 +68,14 @@ pub fn shlBytes(bytes: []const u8, bitShift: usize, out: []u8, comptime chunkSiz
                 inline for (0..chunkSize - 1) |i| {
                     chunks[(i * chunkSize) + (chunkSize - 1)] += remainders[i];
                 }
-                _ = try writer.write(chunks[0..read]);
+                _ = try out.write(chunks[0..read]);
             }
-            try writer.flush();
+            try out.flush();
         },
         else => {
-            const bytesToSkip = bitShift / 8;
-            return @call(.always_tail, shlBytes, .{ bytes[bytesToSkip..], bitShift % 8, out, chunkSize });
+            skipped.* = bitShift / 8;
+            bytes.toss(skipped.*);
+            return @call(.always_tail, shlBytesImpl, .{ bytes, bitShift % 8, out, chunkSize, skipped });
         },
     }
 }
@@ -180,13 +183,11 @@ fn test_shl_bytes(input: ShlTestInput) !void {
 }
 
 fn test_shl_chunked(input: ShlTestInput, comptime chunkSize: usize) !void {
-    const buffer = try std.testing.allocator.alloc(u8, input.size);
-    for (buffer) |*b| {
-        b.* = 0;
-    }
-    defer std.testing.allocator.free(buffer);
-    _ = try shlBytes(input.bytes[0..], input.bitShift, buffer, chunkSize);
-    try std.testing.expectEqualSlices(u8, input.expected, buffer[0..input.bytes.len]);
+    var reader: std.Io.Reader = .fixed(input.bytes);
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+    _ = try shlBytes(&reader, input.bitShift, &out.writer, chunkSize);
+    try std.testing.expectEqualSlices(u8, input.expected, out.written());
 }
 
 test "shl_bytes" {
