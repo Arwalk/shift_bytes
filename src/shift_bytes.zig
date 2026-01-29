@@ -70,7 +70,6 @@ fn shlBytesImpl(bytes: *std.Io.Reader, bitShift: usize, out: *std.Io.Writer, com
                 }
                 _ = try out.write(chunks[0..read]);
             }
-            try out.flush();
         },
         else => {
             skipped.* = bitShift / 8;
