@@ -108,8 +108,8 @@ fn casted_impl(comptime T: type) void {
 
     var shouldContinue = true;
     while (shouldContinue) {
-        const current = reader.takeInt(T, .big) catch @panic("should not fail");
-        const next = if (reader.peekInt(T, .big)) |b| blk: {
+        var current = reader.takeInt(T, .big) catch @panic("should not fail");
+        var next: T = if (reader.peekInt(T, .big)) |b| blk: {
             break :blk b;
         } else |err| blk: {
             switch (err) {
@@ -118,7 +118,9 @@ fn casted_impl(comptime T: type) void {
             }
             break :blk 0;
         };
-        writer.writeInt(T, (current << 2) + (next >> 6), .big) catch @panic("should not fail to write");
+        current = current << 2;
+        next = next >> @bitSizeOf(T) - 2;
+        writer.writeInt(T, current + next, .big) catch @panic("should not fail to write");
     }
 }
 
