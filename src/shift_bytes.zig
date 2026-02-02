@@ -14,8 +14,8 @@ fn buildShlVectors(comptime size: usize, bitShift: usize) ShiftVectors(size) {
     const truncatedBitShift = @as(u3, @truncate(bitShift));
     const reverseShift: u3 = 7 - truncatedBitShift + 1;
     return .{
-        .shift = [_]u3{truncatedBitShift} ** size,
-        .reverseShift = [_]u3{reverseShift} ** size,
+        .shift = @splat(truncatedBitShift),
+        .reverseShift = @splat(reverseShift),
     };
 }
 
