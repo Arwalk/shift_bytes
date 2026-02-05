@@ -2,6 +2,14 @@
     .name = .shift_bytes,
     .version = "0.0.1",
     .minimum_zig_version = "0.15.2",
-    .paths = .{""},
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "LICENSE.md",
+        "README.adoc",
+        ".gitignore",
+        ".github",
+        "src",
+    },
     .fingerprint = 0xba77a5902782ed04,
 }

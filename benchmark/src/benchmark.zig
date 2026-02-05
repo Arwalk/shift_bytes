@@ -1,6 +1,6 @@
 const std = @import("std");
 const zbench = @import("zbench");
-const shlBytes = @import("shifters").shlBytes;
+const shlBytes = @import("shift_bytes").shlBytes;
 
 const BENCHMARK_FILE = "random_file.bin";
 

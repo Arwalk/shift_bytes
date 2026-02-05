@@ -18,12 +18,13 @@ pub fn build(b: *std.Build) void {
         }),
     });
 
-    const shifters = b.addModule("shifters", .{
-        .root_source_file = b.path("../src/shift_bytes.zig"),
+    const shifters = b.dependency("shift_bytes", .{
+        .target = target,
+        .optimize = optimize,
     });
 
     benchmark_exe.root_module.addImport("zbench", zbench_module);
-    benchmark_exe.root_module.addImport("shifters", shifters);
+    benchmark_exe.root_module.addImport("shift_bytes", shifters.module("shift_bytes"));
 
     b.installArtifact(benchmark_exe);
 
