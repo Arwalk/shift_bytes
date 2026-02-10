@@ -19,6 +19,39 @@ fn buildShlVectors(comptime size: usize, bitShift: usize) ShiftVectors(size) {
     };
 }
 
+/// Shift all bytes in a stream left by `bitShift` bits, reading in `chunkSize`-sized chunks until `error.EndOfStream`,
+/// and write the result to an output stream. Preserves bits crossing byte boundaries; zeroes fill at the end.
+///
+/// - `bytes`: Pointer to an `std.Io.Reader` providing the raw input bytes.
+/// - `bitShift`: How many bits to shift each byte left (must be between 1 and 7 inclusive).
+/// - `out`: Pointer to an `std.Io.Writer` that receives the shifted bytes.
+/// - `chunkSize`: Compile-time constant controlling the processing chunk size (must be greater than 1).
+///
+/// `chunkSize` may be any value > 1, but note that 32 is probably the best value to use, as it aligns with modern SIMD register sizes.
+///
+/// The function may buffer input/output and is designed for efficient, chunked SIMD processing.
+/// Extra zeroes (up to chunkSize) are splatted to the output to guarantee full boundary shift safety.
+///
+/// It is safe to pass a writer to pointing to the same starting position than the reader, allowing to bitshift in place.
+///
+/// If you know in advance the maximum size of the bytes to bitshift, it might be better to use `shlBytesFixed`
+///
+/// ## Example
+/// ```zig
+/// const std = @import("std");
+/// const shift_bytes = @import("shift_bytes");
+///
+/// var src = [_]u8{ 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08 };
+/// var dst = [_]u8{0} ** 8;
+///
+/// var reader : std.Io.Reader = .fixed(&src);
+/// var writer : std.Io.Writer = .fixed(&dst);
+///
+/// // Shift left by 1 bit in chunks of 8 bytes
+/// try shift_bytes.shlBytes(&reader, 1, &writer, 8);
+///
+/// // Result in dst: { 0x02, 0x04, 0x06, 0x08, 0x0a, 0x0c, 0x0e, 0x10 }
+/// ```
 pub fn shlBytes(bytes: *std.Io.Reader, bitShift: usize, out: *std.Io.Writer, comptime chunkSize: usize) !void {
     var skipped: usize = 0;
     try shlBytesImpl(bytes, bitShift, out, chunkSize, &skipped);
@@ -98,9 +131,38 @@ fn shlBytesFixedImpl(bytes: []const u8, out: []u8, comptime size: usize, shifter
     @memcpy(out, rt[0..out.len]);
 }
 
+/// Shifts the input bytes left by `bitShift` bits and stores the result in `out`.
+///
+/// Operates on a fixed-size chunk of `size` bytes, performing bitwise shift left
+/// across byte boundaries. This means the bits "spill" from one byte to the next
+/// higher byte, in big-endian (MSB-first) order.
+///
+/// - `bytes`: The input byte slice to shift. Its length must not exceed `size`.
+/// - `bitShift`: The number of bits to shift left. Can be greater than 8—each full 8 causes a byte skip.
+/// - `out`: Output buffer which will receive the shifted bytes. Must be at least `bytes.len` in length.
+/// - `size`: The total size in bytes of the shift operation, also determines the SIMD vector width.
+///
+/// For `bitShift` equal to zero, it simply copies `bytes` to `out`.
+/// For `bitShift` greater than 7, this will internally skip bytes as needed.
+///
+/// This operation does not allocate and requires the caller to provide an appropriately
+/// sized output buffer.
+///
+/// Example:
+/// ```zig
+/// const bytes = [_]u8{1, 2, 3, 4, 5, 6, 7, 8};
+/// var out = [_]u8{0} ** 8;
+/// shlBytesFixed(bytes[0..], 1, out[0..], 8);
+/// // out == [_]u8{2, 4, 6, 8, 10, 12, 14, 16}
+/// ```
+///
+/// This function is meant to be used when you know that `bytes.len` will never exceed `size`
+///
+/// Note that using `sizes` > 32 might not be necessarily the most optimal use of this function. Instead use shlBytes
 pub fn shlBytesFixed(bytes: []const u8, bitShift: usize, out: []u8, comptime size: usize) void {
     switch (bitShift) {
         0 => {
+            assert(size >= bytes.len);
             for (bytes, 0..bytes.len) |b, i| {
                 out[i] = b;
             }
@@ -118,6 +180,25 @@ pub fn shlBytesFixed(bytes: []const u8, bitShift: usize, out: []u8, comptime siz
     }
 }
 
+/// Allocates a buffer of `size` bytes and stores the result of shifting `bytes` left by `bitShift` bits in it.
+///
+/// This is a heap-allocating variant of `shlBytesFixed`. The caller must free the returned buffer.
+/// The result buffer is always zero-initialized before the shift operation.
+///
+/// - `bytes`: The input bytes to shift (length must be <= `size`).
+/// - `bitShift`: The number of bits to shift. Can be >= 8.
+/// - `size`: The fixed size (in bytes) for the result and output buffer.
+/// - `allocator`: The allocator to use for memory allocation.
+///
+/// Returns a `[]u8` buffer of length `size` containing the shifted result.
+/// The user is responsible for freeing the returned buffer.
+///
+/// Example:
+/// ```zig
+/// const result = try shlBytesAllocFixed(&[_]u8{1,2,3,4}, 3, 8, allocator);
+/// defer allocator.free(result);
+/// // result == [_]u8{8, 16, 24, 32, 0, 0, 0, 0}
+/// ```
 pub fn shlBytesAllocFixed(bytes: []const u8, bitShift: usize, comptime size: usize, allocator: std.mem.Allocator) ![]u8 {
     const buffer = try allocator.alloc(u8, size);
     for (buffer) |*b| {
@@ -127,6 +208,22 @@ pub fn shlBytesAllocFixed(bytes: []const u8, bitShift: usize, comptime size: usi
     return buffer;
 }
 
+/// Shifts the contents of the provided `bytes` buffer left by `bitShift` bits in-place, up to `size` bytes.
+///
+/// This function modifies the given `bytes` slice by left-shifting its values by the specified `bitShift` amount.
+/// Any overflowed bits are truncated, and if `bitShift` is 8 or more, the upper bytes at the end of the array are zeroed out,
+/// corresponding to the number of bytes shifted away.
+///
+/// - `bytes`: The mutable buffer to shift (will be overwritten).
+/// - `bitShift`: The number of bits to shift left by. Can be greater than 8.
+/// - `size`: The fixed size of the shift window; should be at least `bytes.len`.
+///
+/// Example:
+/// ```zig
+/// var buffer = [_]u8{0x01, 0x02, 0x03, 0x04};
+/// shlBytesInplaceFixed(&buffer, 4, 4);
+/// // buffer == [_]u8{0x10, 0x20, 0x30, 0x40}
+/// ```
 pub fn shlBytesInplaceFixed(bytes: []u8, bitShift: usize, comptime size: usize) void {
     shlBytesFixed(bytes, bitShift, bytes, size);
     if (bitShift >= 8) {
