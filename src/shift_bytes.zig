@@ -105,7 +105,7 @@ fn shlBytesImpl(bytes: *std.Io.Reader, bitShift: usize, out: *std.Io.Writer, com
                 const remainderVector: @Vector(chunkCount, u8) = boundaries;
                 const remainders = remainderVector >> remainderShifters.reverseShift;
 
-                inline for (0..chunkCount - 1) |i| {
+                inline for (0..chunkCount) |i| {
                     chunks[(i * chunkSize) + (chunkSize - 1)] += remainders[i];
                 }
                 _ = try out.write(chunks[0..read]);
@@ -528,6 +528,22 @@ test "shl 2 bytes" {
     var buffer = [_]u8{ 0x01, 0x02 };
     shlBytesInplaceFixed(&buffer, 2, 2);
     try std.testing.expectEqualSlices(u8, &[_]u8{ 0x04, 0x08 }, &buffer);
+}
+
+// Streaming left shift over an input spanning several read buffers, where every byte carries a bit across the
+// buffer boundary. Regression test: the final byte of each read buffer must receive the carry from the next byte.
+test "shl_chunked carries across buffer boundary" {
+    const input = [_]u8{0x80} ** 16; // every MSB carries into the previous byte's LSB on a 1-bit left shift
+    var expected = [_]u8{0} ** 16;
+    shlBytesFixed(input[0..], 1, expected[0..], 16);
+
+    inline for (.{ 2, 3, 4 }) |chunkSize| {
+        var reader: std.Io.Reader = .fixed(input[0..]);
+        var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+        defer out.deinit();
+        try shlBytes(&reader, 1, &out.writer, chunkSize, 2);
+        try std.testing.expectEqualSlices(u8, expected[0..], out.written());
+    }
 }
 
 inline fn to_bytes(num: u64, out: []u8) void {
