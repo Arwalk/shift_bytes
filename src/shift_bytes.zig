@@ -65,7 +65,7 @@ fn shlBytesImpl(bytes: *std.Io.Reader, bitShift: usize, out: *std.Io.Writer, com
         if (chunkSize <= 1) {
             @compileError("shlBytes can not shift chunks of size 1 or 0.");
         }
-        if (chunkSize <= 1) {
+        if (chunkCount <= 1) {
             @compileError("shlBytes needs chunk counts >= 2. ");
         }
     }
