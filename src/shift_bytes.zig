@@ -541,33 +541,61 @@ inline fn to_bytes(num: u64, out: []u8) void {
     out[7] = @truncate(num);
 }
 
+fn naive_implementation(source: []u8, destination: []u8) !void {
+    var reader: std.Io.Reader = .fixed(source[0..]);
+    var writer: std.Io.Writer = .fixed(destination[0..]);
+
+    var shouldContinue = true;
+    while (shouldContinue) {
+        const current = try reader.takeByte();
+        const next = if (reader.peekByte()) |b| blk: {
+            break :blk b;
+        } else |err| blk: {
+            switch (err) {
+                error.EndOfStream => shouldContinue = false,
+                else => @panic("should not fail to peek a byte"),
+            }
+            break :blk 0;
+        };
+        try writer.writeByte((current << 2) + (next >> 6));
+    }
+}
+
 test "fuzz shl" {
     const Context = struct {
-        value: u64,
-
-        fn testOne(context: @This(), inputRaw: []const u8) anyerror!void {
+        fn testOne(context: @This(), smith: *std.testing.Smith) anyerror!void {
             _ = context;
-            if (inputRaw.len != 9) {
+            const size: usize = smith.value(usize);
+
+            var input: []u8 = try std.testing.allocator.alloc(u8, size);
+            defer std.testing.allocator.free(input);
+
+            var expected: []u8 = try std.testing.allocator.alloc(u8, size);
+            defer std.testing.allocator.free(expected);
+
+            const len = smith.slice(input);
+
+            if (len != 9) {
                 return;
             }
-            const inputValue: u64 = @as(u64, inputRaw[0]) << 56 | @as(u64, inputRaw[1]) << 48 | @as(u64, inputRaw[2]) << 40 | @as(u64, inputRaw[3]) << 32 | @as(u64, inputRaw[4]) << 24 | @as(u64, inputRaw[5]) << 16 | @as(u64, inputRaw[6]) << 8 | @as(u64, inputRaw[7]);
-            const inputBitShift: u6 = @truncate(inputRaw[8]);
-            const expected = inputValue << inputBitShift;
-            var expectedBytes = [_]u8{0} ** 8;
-            to_bytes(expected, &expectedBytes);
-            var inputBytes = [_]u8{0} ** 8;
-            to_bytes(inputValue, &inputBytes);
-            const input = ShlTestInput{
+
+            const inputRaw = input[0..len];
+
+            try naive_implementation(input, expected);
+
+            const inputBitShift: u6 = @truncate(smith.value(u6));
+
+            const shlTestInput = ShlTestInput{
                 .size = 8,
-                .bytes = &inputBytes,
+                .bytes = inputRaw,
                 .bitShift = inputBitShift,
-                .expected = &expectedBytes,
-                .expectedRemainder = expectedBytes[0] >> (7 - @as(u3, @truncate(inputBitShift)) + 1),
+                .expected = expected[0..len],
+                .expectedRemainder = expected[0] >> (7 - @as(u3, @truncate(inputBitShift)) + 1),
             };
-            try test_shl_bytes_alloc(input);
-            try test_shl_bytes(input);
-            try test_shl_bytes_inplace(input);
+            try test_shl_bytes_alloc(shlTestInput);
+            try test_shl_bytes(shlTestInput);
+            try test_shl_bytes_inplace(shlTestInput);
         }
     };
-    try std.testing.fuzz(Context{ .value = 0 }, Context.testOne, .{});
+    try std.testing.fuzz(Context{}, Context.testOne, .{});
 }
