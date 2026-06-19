@@ -1,6 +1,7 @@
 const std = @import("std");
 const zbench = @import("zbench");
 const shlBytes = @import("shift_bytes").shlBytes;
+const shrBytes = @import("shift_bytes").shrBytes;
 
 const BENCHMARK_FILE = "random_file.bin";
 
@@ -31,6 +32,17 @@ fn bench_shift(comptime chunkSize: usize, comptime chunkCount: usize) type {
     };
 }
 
+fn bench_shift_right(comptime chunkSize: usize, comptime chunkCount: usize) type {
+    return struct {
+        fn run(_: std.mem.Allocator) void {
+            var reader: std.Io.Reader = .fixed(data[0..]);
+            var useless = [_]u8{0};
+            var writer = std.Io.Writer.Discarding.init(&useless).writer;
+            shrBytes(&reader, 17, &writer, chunkSize, chunkCount) catch @panic("unable to shift");
+        }
+    };
+}
+
 var data: []u8 = undefined;
 
 pub fn main() !void {
@@ -48,6 +60,12 @@ pub fn main() !void {
     inline for (&[_]usize{ 8, 16, 32, 64, 128 }) |chunk| {
         inline for (&[_]usize{ 2, 4, 8, 16, 32, 64, 128 }) |count| {
             try bench.add(try std.fmt.allocPrint(arena_allocator, "shl {d}x{d}", .{ chunk, count }), bench_shift(chunk, count).run, .{});
+        }
+    }
+
+    inline for (&[_]usize{ 8, 16, 32, 64, 128 }) |chunk| {
+        inline for (&[_]usize{ 2, 4, 8, 16, 32, 64, 128 }) |count| {
+            try bench.add(try std.fmt.allocPrint(arena_allocator, "shr {d}x{d}", .{ chunk, count }), bench_shift_right(chunk, count).run, .{});
         }
     }
 

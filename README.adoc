@@ -20,3 +20,21 @@ shl_bytes(bytes2[0..], 1, buffer, 8);
 try std.testing.expectEqualSlices(u8, &[_]u8{0x01, 0x00, 0x01, 0x00, 0x01, 0x00, 0x01, 0x00}, buffer);
 ```
 
+Shifting right works the same way, but in the opposite direction: bits spill towards the higher
+(less significant) bytes and zeroes fill in at the start.
+
+```zig
+const shift_bytes = @import("shift_bytes");
+
+const bytes = [_]u8{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
+var buffer = [_]u8{0} ** (8);
+
+shift_bytes.shrBytesFixed(bytes[0..], 1, buffer[0..], 8);
+try std.testing.expectEqualSlices(u8, &[_]u8{0x00, 0x81, 0x01, 0x82, 0x02, 0x83, 0x03, 0x84}, &buffer);
+
+// keeps the shifted bytes across the array, only truncates at the boundaries.
+const bytes2 = [_]u8{ 0x80, 0x80, 0x00, 0x80, 0x00, 0x80, 0x00, 0x80};
+shift_bytes.shrBytesFixed(bytes2[0..], 1, buffer[0..], 8);
+try std.testing.expectEqualSlices(u8, &[_]u8{0x40, 0x40, 0x00, 0x40, 0x00, 0x40, 0x00, 0x40}, &buffer);
+```
+
