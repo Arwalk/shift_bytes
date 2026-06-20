@@ -62,6 +62,9 @@ pub fn shlBytes(bytes: *std.Io.Reader, bitShift: usize, out: *std.Io.Writer, com
 
 fn shlBytesImpl(bytes: *std.Io.Reader, bitShift: usize, out: *std.Io.Writer, comptime chunkSize: usize, comptime chunkCount: usize, skipped: *usize) !void {
     comptime {
+        // The chunked loops below `inline for` over `chunkCount`, which can be large
+        // (e.g. 128 in the benchmarks); raise the branch limit so those instantiations compile.
+        @setEvalBranchQuota(10 * chunkCount * chunkSize + 1000);
         if (chunkSize <= 1) {
             @compileError("shlBytes can not shift chunks of size 1 or 0.");
         }
@@ -286,6 +289,9 @@ pub fn shrBytes(bytes: *std.Io.Reader, bitShift: usize, out: *std.Io.Writer, com
 
 fn shrBytesImpl(bytes: *std.Io.Reader, bitShift: usize, out: *std.Io.Writer, comptime chunkSize: usize, comptime chunkCount: usize) !void {
     comptime {
+        // The chunked loops below `inline for` over `chunkCount`, which can be large
+        // (e.g. 128 in the benchmarks); raise the branch limit so those instantiations compile.
+        @setEvalBranchQuota(10 * chunkCount * chunkSize + 1000);
         if (chunkSize <= 1) {
             @compileError("shrBytes can not shift chunks of size 1 or 0.");
         }

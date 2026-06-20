@@ -2,4 +2,4 @@
 zig-out/
 *.o
 benchmark/random_file.bin
-
+zig-pkg

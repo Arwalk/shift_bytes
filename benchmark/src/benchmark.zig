@@ -5,18 +5,18 @@ const shrBytes = @import("shift_bytes").shrBytes;
 
 const BENCHMARK_FILE = "random_file.bin";
 
-fn loadData(allocator: std.mem.Allocator) ![]u8 {
+fn loadData(allocator: std.mem.Allocator, io: std.Io) ![]u8 {
     std.debug.print("Loading data from {s}...\n", .{BENCHMARK_FILE});
-    const file = try std.fs.cwd().openFile(BENCHMARK_FILE, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, BENCHMARK_FILE, .{});
+    defer file.close(io);
 
     // Get file size and allocate buffer
-    const size = (try file.stat()).size;
+    const size = (try file.stat(io)).size;
     std.debug.print("Dataset file size: {d} bytes\n", .{size});
 
     const buffer = try allocator.alloc(u8, size);
 
-    _ = try file.readAll(buffer); // Read the entire file into the buffer
+    _ = try file.readPositionalAll(io, buffer, 0); // Read the entire file into the buffer
     std.debug.print("Read file contents\n", .{});
     return buffer;
 }
@@ -46,13 +46,17 @@ fn bench_shift_right(comptime chunkSize: usize, comptime chunkCount: usize) type
 var data: []u8 = undefined;
 
 pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}){};
+
+    var threaded: std.Io.Threaded = .init(gpa.allocator(), .{});
+    defer threaded.deinit();
+    const io = threaded.io();
 
     var arena = std.heap.ArenaAllocator.init(gpa.allocator());
     defer arena.deinit();
     const arena_allocator = arena.allocator();
 
-    data = try loadData(arena_allocator);
+    data = try loadData(arena_allocator, io);
 
     var bench = zbench.Benchmark.init(arena_allocator, .{});
     defer bench.deinit();
@@ -76,11 +80,8 @@ pub fn main() !void {
     try bench.add("casted u128", casted_128, .{});
     try bench.add("casted u256", casted_256, .{});
 
-    var buf: [1024]u8 = undefined;
-    var stderr = std.fs.File.stderr().writer(&buf);
-    const writer = &stderr.interface;
-    try bench.run(writer);
-    try writer.flush();
+    const stderr: std.Io.File = .stderr();
+    try bench.run(io, stderr);
 }
 
 fn naive_implementation(_: std.mem.Allocator) void {
